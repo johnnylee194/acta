@@ -1,117 +1,60 @@
-# Acta
+# Acta — 个人私有化日历系统 (Android 离线优先 + 服务端 + Web 端)
 
-> *Acta Diurna* — 私有化部署的离线优先（Offline-First）全平台日程管理系统（Web + Android），专为国内网络环境与无 GMS 依赖场景设计。
-
-## 核心特性
-
-- **全栈离线优先与增量同步**：Web 端（IndexedDB）与 Android 端（SQLite）均支持完全离线秒级读写；基于全局单调递增版本号（`sync_version`）实现双向增量同步（Push / Pull），配合 WebSocket 达成多端实时状态对齐。
-- **标准重复日程引擎（RFC 5545）**：基于 `rrule` 动态内存展开视图窗口，数据库仅存储母事件与异常实例（`recurring_event_id` / `exdates`），完整支持「仅此日程 / 此日程及后续 / 所有日程」三种修改与删除作用域。
-- **零 GMS 依赖的安卓精准提醒**：摒弃海外 FCM 与第三方厂商推送通道，通过本地滚动窗口调度器（Rolling Window Scheduler）动态计算未来 14 天内的日程提醒，直接注册系统内核级 `AlarmManager` 精确闹钟，确保国产定制 ROM 锁屏后台准时触达。
-- **本土化日历深度适配**：内置 `lunar-typescript` 离线计算农历、二十四节气与干支纪年，支持按年份动态下发国务院放假调休配置（渲染「休 / 班」角标）。
-- **轻量单机运维与标准互通**：服务端采用 SQLite（WAL 模式）单文件存储，内置每日 `VACUUM INTO` 零停机热备份；支持标准 `.ics` 文件导入导出与只读订阅链接。
+专为国内网络环境设计的私有化类 Google Calendar 系统，零 GMS/FCM 依赖，支持**公历与农历生日重复日程**、**外部 iCal 动态赛事订阅（如皇马官方比赛日历）**、**Google Calendar `.ics` 备份导入**、**Android 本地 SQLite 离线秒开**以及**国产定制系统（HyperOS / OriginOS / ColorOS）14 天滚动窗口精确闹钟锁屏提醒**。
 
 ---
 
-## 技术栈
-
-| 模块 | 技术选型 | 说明 |
-| :--- | :--- | :--- |
-| **Backend** | Node.js + TypeScript + Fastify / Express | 轻量 REST API 与 WebSocket 变更广播 |
-| **Database** | SQLite (`better-sqlite3`, WAL Mode) | 单文件高性能持久化，支持定时快照热备 |
-| **Web Client** | React + Vite + Tailwind CSS v4 + FullCalendar | 日/周/月/议程视图、拖拽改期、全键盘快捷键 |
-| **Android App** | React Native (Expo Prebuild) + `expo-sqlite` | 本地数据库驱动、系统级精确闹钟、原生桌面小组件 |
-| **Shared Core** | TypeScript + Zod + `rrule` + `lunar-typescript` | 三端共享数据校验 Schema、重复日程展开与农历算法 |
-
----
-
-## 目录结构
+## 一、 工程目录结构
 
 ```text
 acta/
+├── .github/workflows/
+│   └── build-android-apk.yml     # GitHub Actions 云端自动编译 Android Release APK
 ├── packages/
-│   └── shared/          # 三端共享的类型定义、Zod Schema、RRULE 展开与农历计算逻辑
-├── server/              # Node.js 后端服务、增量同步引擎、ICS 解析与定时备份任务
-├── web/                 # React + FullCalendar 桌面端 Web 应用
-├── android/             # Expo React Native 移动端应用、AlarmManager 调度器与 AppWidget
-└── docker-compose.yml   # 生产环境容器编排配置
-
+│   └── core/                     # 三端共享核心引擎（Zod Schema、公历/农历重复与异常分裂、ICS解析、提醒计算）
+├── apps/
+│   ├── server/                   # Node.js + Fastify + better-sqlite3 (WAL) + WebSocket 服务端
+│   ├── mobile/                   # Expo React Native + expo-sqlite + AlarmManager + 桌面小组件 Android 端
+│   └── web/                      # React + Vite + Tailwind CSS v4 + FullCalendar 桌面端
+├── deploy/
+│   └── nginx.conf.example        # Nginx HTTPS + WebSocket 反向代理配置模板
+├── Dockerfile                    # 服务端 + Web 静态产物多阶段构建镜像
+└── docker-compose.yml            # 单机一键部署编排
 ```
 
 ---
 
-## 快速部署（Docker）
+## 二、 服务端一键部署指南（Docker Compose + Nginx）
 
-### 1. 准备配置文件
+1. **配置访问密码**：
+   ```bash
+   cp .env.example .env
+   # 编辑 .env，将 AUTH_SECRET 修改为您个人的高强度访问密码
+   ```
 
-在项目根目录创建 `docker-compose.yml`：
+2. **启动容器**：
+   ```bash
+   docker compose up -d --build
+   ```
+   - SQLite 数据库文件自动持久化在 `./data/calendar.db`（WAL 模式）。
+   - 每日凌晨 `03:30` 自动执行 `VACUUM INTO` 零停机热备份至 `./data/backups/` 并保留最近 30 天快照。
+   - 后台每 4 小时自动拉取并增量更新所有外部 iCal 订阅源（如皇马最新赛程时间变动）。
 
-```yaml
-version: '3.8'
-
-services:
-  acta-server:
-    build: .
-    container_name: acta-server
-    restart: always
-    ports:
-      - "127.0.0.1:3080:3080"
-    volumes:
-      - ./data:/app/data
-    environment:
-      - NODE_ENV=production
-      - TZ=Asia/Shanghai
-      - AUTH_SECRET=change_this_to_your_private_token
-      - DB_PATH=/app/data/acta.db
-
-```
-
-### 2. 启动服务
-
-```bash
-docker compose up -d --build
-
-```
-
-### 3. Nginx 反向代理（HTTPS + WebSocket）
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name acta.yourdomain.com;
-
-    # SSL 证书配置略
-
-    location / {
-        proxy_pass [http://127.0.0.1:3080](http://127.0.0.1:3080);
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-
-```
+3. **配置 Nginx HTTPS 反向代理**：
+   参考 `deploy/nginx.conf.example` 配置域名 SSL 证书与 WebSocket Upgrade 转发。
 
 ---
 
-## Android 端构建与权限说明
+## 三、 Android 手机端打包与使用指南
 
-Android 端使用 Expo Prebuild 生成原生工程，已内置日历类应用专属精确闹钟权限（`USE_EXACT_ALARM`、`SCHEDULE_EXACT_ALARM`、`RECEIVE_BOOT_COMPLETED`）。
+### 1. 自动获取 APK 安装包（推荐，免本地配环境）
+将仓库推送到 GitHub 后，GitHub Actions（`.github/workflows/build-android-apk.yml`）会自动在云端执行 `expo prebuild` 与 Gradle 编译，直接在 GitHub Actions 页面的 **Artifacts** 中下载 `acta-calendar-android-release-apk` 安装到手机即可。
 
-```bash
-cd android
-npx expo prebuild --platform android
-npx expo run:android --variant release
-
-```
-
-> **国产 ROM 保活提示**：安装后请在系统「应用信息」中开启**自启动**，并将省电策略设为**无限制**，以确保设备重启后本地闹钟队列自动重建。
-
-## License
-
-MIT
-
-```
-
-```
+### 2. 手机端首次设置与国产 ROM 锁屏准时提醒配置
+1. 打开 App 点击右上角 **「设置/订阅」**：
+   - 填入您的服务器 `https://域名` 与访问密码，点击 **「保存并立即同步」**。
+   - 可在设置页直接添加 **皇马官方赛程等 iCal 订阅链接**（支持 `https://` 与 `webcal://`），并设置开球前默认提前提醒分钟数（如提前 30 分钟）。
+   - 可直接粘贴或导入从 Google Calendar 导出的 `.ics` 备份文件。
+2. **国产手机锁屏保活一次性设置（以小米 HyperOS 为例）**：
+   - 在系统「应用设置 -> Acta 日历」中开启 **「自启动」**，并将省电策略设为 **「无限制」**。
+   - 点击 App 设置页中的 **「🔔 测试 10 秒后锁屏横幅提醒」** 并立即按电源键锁屏，验证 10 秒后锁屏通知横幅与提示音。

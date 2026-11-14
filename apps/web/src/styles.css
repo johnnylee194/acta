@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* FullCalendar Google Calendar-inspired clean styling */
+.fc {
+  --fc-border-color: #e2e8f0;
+  --fc-today-bg-color: #eff6ff;
+  --fc-now-indicator-color: #ef4444;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.fc .fc-daygrid-day-top {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+}
+
+.fc .fc-event {
+  border-radius: 6px;
+  padding: 1px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}

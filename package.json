@@ -1,0 +1,26 @@
+{
+  "name": "acta",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted Offline-First Personal Calendar System (Server + Android + Web)",
+  "workspaces": [
+    "packages/*",
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:server": "npm run dev --workspace=@acta/server",
+    "dev:web": "npm run dev --workspace=@acta/web",
+    "dev:mobile": "npm run start --workspace=@acta/mobile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

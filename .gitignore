@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.expo/
+android/
+ios/
+data/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/

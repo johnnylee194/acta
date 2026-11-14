@@ -1,0 +1,16 @@
+services:
+  acta-calendar:
+    build: .
+    container_name: acta-server
+    restart: always
+    ports:
+      - "127.0.0.1:3080:3080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - TZ=Asia/Shanghai
+      - PORT=3080
+      - AUTH_SECRET=${AUTH_SECRET:-change_me_to_your_personal_password}
+      - DB_PATH=/app/data/calendar.db
+      - BACKUP_DIR=/app/data/backups

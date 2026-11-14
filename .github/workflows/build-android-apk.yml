@@ -1,0 +1,64 @@
+name: Build Android Release APK
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'packages/core/**'
+      - 'apps/mobile/**'
+      - '.github/workflows/build-android-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Compile Android APK (Expo Prebuild + Gradle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java JDK 17 (required by Android Gradle Plugin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install Monorepo Dependencies & Build @acta/core
+        run: |
+          npm install
+          npm run build --workspace=@acta/core
+          cd apps/mobile && npm install --legacy-peer-deps
+
+      - name: Generate Native Android Project (Expo Prebuild)
+        working-directory: apps/mobile
+        env:
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          npx expo prebuild --platform android --clean
+
+      - name: Build Signed Release APK
+        working-directory: apps/mobile/android
+        run: |
+          ./gradlew assembleRelease -x lint -x test --no-daemon
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: acta-calendar-android-release-apk
+          path: apps/mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
